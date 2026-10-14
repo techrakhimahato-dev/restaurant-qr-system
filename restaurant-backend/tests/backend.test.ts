@@ -9,6 +9,7 @@ import {
 import { requireStaffKey } from "../src/middleware/staffAuth.ts";
 import healthRouter from "../src/routes/health.ts";
 import mongoose from "mongoose";
+import { Category } from "../src/models/Category.ts";
 import { MenuItem } from "../src/models/MenuItem.ts";
 import { Order } from "../src/models/Order.ts";
 import { RestaurantTable } from "../src/models/RestaurantTable.ts";
@@ -53,53 +54,263 @@ test("POST /api/orders returns an order ID for a valid order", async () => {
   };
   const tableObjectId = new mongoose.Types.ObjectId();
   const menuObjectId = new mongoose.Types.ObjectId(firstId);
-try{
-  RestaurantTable.findOne = (() => ({
-    select: async () => ({ _id: tableObjectId, tableId: "1" }),
-  })) as never;
+  try {
+    RestaurantTable.findOne = (() => ({
+      select: async () => ({ _id: tableObjectId, tableId: "1" }),
+    })) as never;
 
-  MenuItem.find = (() => ({
-    select: async () => [
-      { _id: menuObjectId, name: "Chicken Momo", price: 180 },
-    ],
-  })) as never;
+    MenuItem.find = (() => ({
+      select: async () => [
+        { _id: menuObjectId, name: "Chicken Momo", price: 180 },
+      ],
+    })) as never;
 
-  Order.create = (async (order: Record<string, unknown>) => ({
-  ...order,
-  _id: expectedOrderId,
-  status: "pending",
-  createdAt: new Date(),
-  updatedAt: new Date(),
-})) as never;
-const address = server.address();
-if (!address || typeof address === "string") {
-  throw new Error("Could not get the test server address");
-}
+    Order.create = (async (order: Record<string, unknown>) => ({
+      ...order,
+      _id: expectedOrderId,
+      status: "pending",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })) as never;
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Could not get the test server address");
+    }
 
-const response = await fetch(
-  `http://127.0.0.1:${address.port}/api/orders`,
-  {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      tableId: "1",
-      items: [{ menuItemId: firstId, quantity: 2 }],
-    }),
-  },
-);
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/orders`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tableId: "1",
+          items: [{ menuItemId: firstId, quantity: 2 }],
+        }),
+      },
+    );
 
-assert.equal(response.status, 201);
-const payload = await response.json();
-assert.equal(payload.order.id, expectedOrderId.toString());
-} finally {
-  RestaurantTable.findOne = savedMethods.findOne;
-  MenuItem.find = savedMethods.find;
-  Order.create = savedMethods.create;
-  await new Promise<void>((resolve) => server.close(() => resolve()));
-}
+    assert.equal(response.status, 201);
+    const payload = await response.json();
+    assert.equal(payload.order.id, expectedOrderId.toString());
+  } finally {
+    RestaurantTable.findOne = savedMethods.findOne;
+    MenuItem.find = savedMethods.find;
+    Order.create = savedMethods.create;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });
 
+test("GET /api/orders/:orderId returns an order", async () => {
+  const savedFindById = Order.findById;
+  const server = app.listen(0);
+  try {
+    const fakeOrder = {
+      _id: expectedOrderId,
+      tableId: "1",
+      items: [
+        {
+          menuItem: new mongoose.Types.ObjectId(firstId),
+          name: "Chicken Momo",
+          unitPrice: 180,
+          quantity: 2,
+          lineTotal: 360,
+        },
+      ],
+      total: 360,
+      status: "pending",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
 
+    Order.findById = (() => ({
+      select: async () => fakeOrder,
+    })) as never;
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Could not get the test server address");
+    }
+
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/orders/${expectedOrderId.toString()}`,
+    );
+
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.order.id, expectedOrderId.toString());
+    assert.equal(payload.order.total, 360);
+  } finally {
+    Order.findById = savedFindById;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("GET /api/menu returns available menu items", async () => {
+  const savedFind = MenuItem.find;
+  const categoryId = new mongoose.Types.ObjectId();
+  MenuItem.find = (() => {
+    const query = {
+      sort() { return this; },
+      populate() { return this; },
+      lean: async () => [{
+        _id: new mongoose.Types.ObjectId(firstId),
+        name: "Chicken Momo",
+        description: "Steamed dumplings",
+        price: 180,
+        category: { _id: categoryId, name: "Momo", slug: "momo" },
+        isAvailable: true,
+      }],
+    };
+    return query;
+  }) as never;
+
+  try {
+    const payload = await withAppServer(async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/menu`);
+      assert.equal(response.status, 200);
+      return response.json();
+    });
+    assert.equal(payload.items[0].id, firstId);
+    assert.equal(payload.items[0].price, 180);
+    assert.equal(payload.items[0].category.slug, "momo");
+  } finally {
+    MenuItem.find = savedFind;
+  }
+});
+
+test("GET /api/categories returns active categories", async () => {
+  const savedFind = Category.find;
+  const categoryId = new mongoose.Types.ObjectId();
+  Category.find = (() => ({
+    sort() { return this; },
+    select() { return this; },
+    lean: async () => [{
+      _id: categoryId,
+      name: "Momo",
+      slug: "momo",
+      description: "Dumplings",
+    }],
+  })) as never;
+
+  try {
+    const payload = await withAppServer(async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/categories`);
+      assert.equal(response.status, 200);
+      return response.json();
+    });
+    assert.equal(payload.categories[0].id, categoryId.toString());
+    assert.equal(payload.categories[0].slug, "momo");
+  } finally {
+    Category.find = savedFind;
+  }
+});
+
+test("GET /api/tables/:tableId returns an active table", async () => {
+  const savedFindOne = RestaurantTable.findOne;
+  RestaurantTable.findOne = (() => ({
+    select() { return this; },
+    lean: async () => ({ tableId: "1", name: "Table 1" }),
+  })) as never;
+
+  try {
+    const payload = await withAppServer(async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/tables/1`);
+      assert.equal(response.status, 200);
+      return response.json();
+    });
+    assert.deepEqual(payload.table, { id: "1", name: "Table 1" });
+  } finally {
+    RestaurantTable.findOne = savedFindOne;
+  }
+});
+
+test("GET /api/orders returns recent orders with a valid staff token", async () => {
+  const previousKey = process.env.STAFF_API_KEY;
+  const savedFind = Order.find;
+  const staffKey = "t".repeat(32);
+  const fakeOrder = {
+    _id: expectedOrderId,
+    tableId: "1",
+    items: [{
+      menuItem: new mongoose.Types.ObjectId(firstId),
+      name: "Chicken Momo",
+      unitPrice: 180,
+      quantity: 2,
+      lineTotal: 360,
+    }],
+    total: 360,
+    status: "pending",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  process.env.STAFF_API_KEY = staffKey;
+  Order.find = (() => ({
+    sort() { return this; },
+    limit() { return this; },
+    select: async () => [fakeOrder],
+  })) as never;
+
+  try {
+    const payload = await withAppServer(async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/orders?status=pending&tableId=1&limit=10`, {
+        headers: { Authorization: `Bearer ${staffKey}` },
+      });
+      assert.equal(response.status, 200);
+      return response.json();
+    });
+    assert.equal(payload.count, 1);
+    assert.equal(payload.orders[0].id, expectedOrderId.toString());
+  } finally {
+    Order.find = savedFind;
+    if (previousKey === undefined) delete process.env.STAFF_API_KEY;
+    else process.env.STAFF_API_KEY = previousKey;
+  }
+});
+
+test("PATCH /api/orders/:orderId/status updates status for staff", async () => {
+  const previousKey = process.env.STAFF_API_KEY;
+  const savedFindByIdAndUpdate = Order.findByIdAndUpdate;
+  const staffKey = "t".repeat(32);
+  const updatedOrder = {
+    _id: expectedOrderId,
+    tableId: "1",
+    items: [{
+      menuItem: new mongoose.Types.ObjectId(firstId),
+      name: "Chicken Momo",
+      unitPrice: 180,
+      quantity: 2,
+      lineTotal: 360,
+    }],
+    total: 360,
+    status: "preparing",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  process.env.STAFF_API_KEY = staffKey;
+  Order.findByIdAndUpdate = (() => ({
+    select: async () => updatedOrder,
+  })) as never;
+
+  try {
+    const payload = await withAppServer(async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/orders/${expectedOrderId}/status`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${staffKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: "preparing" }),
+      });
+      assert.equal(response.status, 200);
+      return response.json();
+    });
+    assert.equal(payload.order.id, expectedOrderId.toString());
+    assert.equal(payload.order.status, "preparing");
+  } finally {
+    Order.findByIdAndUpdate = savedFindByIdAndUpdate;
+    if (previousKey === undefined) delete process.env.STAFF_API_KEY;
+    else process.env.STAFF_API_KEY = previousKey;
+  }
+});
 
 test("accepts valid order lines and merges duplicate menu item IDs", () => {
   const result = validateCreateOrder({
@@ -243,6 +454,29 @@ test("keeps staff routes disabled without a configured key", () => {
   if (previous !== undefined) process.env.STAFF_API_KEY = previous;
 });
 
+test("GET /api/orders rejects requests without a staff token", async () => {
+  const previousKey = process.env.STAFF_API_KEY;
+  process.env.STAFF_API_KEY = "t".repeat(32);
+  const server = app.listen(0);
+
+  try {
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Could not get the test server address");
+    }
+
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/orders`);
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), {
+      error: "Valid staff bearer token required",
+    });
+  } finally {
+    if (previousKey === undefined) delete process.env.STAFF_API_KEY;
+    else process.env.STAFF_API_KEY = previousKey;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 test("health reports an unavailable database when MongoDB is disconnected", () => {
   const handler = (
     healthRouter as unknown as {
@@ -316,4 +550,17 @@ function mockResponse() {
       return this;
     },
   };
+}
+
+async function withAppServer<T>(action: (baseUrl: string) => Promise<T>): Promise<T> {
+  const server = app.listen(0);
+  try {
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Could not get the test server address");
+    }
+    return await action(`http://127.0.0.1:${address.port}`);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 }
