@@ -12,6 +12,7 @@ const orderSchema = new Schema(
     items: { type: [OrderItemSchema], required: true, validate: [(items: unknown[]) => items.length > 0, "Order must contain at least one item"] },
     total: { type: Number, required: true, min: 0 },
     status: { type: String, enum: orderStatuses, default: "pending", index: true },
+    receiptTokenHash: { type: String, select: false },
   },
   { timestamps: true },
 );

@@ -8,6 +8,9 @@ type CartProps = {
   isSubmitting: boolean;
   checkoutError: string | null;
   orderId: string | null;
+  orderStatus: string | null;
+  onRefreshStatus: () => void;
+  isRefreshingStatus: boolean;
 };
 
 export default function Cart({
@@ -18,6 +21,9 @@ export default function Cart({
   isSubmitting,
   checkoutError,
   orderId,
+  orderStatus,
+  onRefreshStatus,
+  isRefreshingStatus,
 }: CartProps) {
   const itemCount = cart.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
   const total = cart.reduce((sum, item) => sum + item.price * (item.quantity ?? 1), 0);
@@ -38,6 +44,10 @@ export default function Cart({
           <div>
             <strong>Order received</strong>
             <p>Keep this order ID: <span className="order-id">{orderId}</span></p>
+            {orderStatus && <p>Current status: {orderStatus}</p>}
+            <button className="order-status-refresh" type="button" onClick={onRefreshStatus} disabled={isRefreshingStatus}>
+              {isRefreshingStatus ? "Checking status…" : "Refresh order status"}
+            </button>
           </div>
         </div>
       )}

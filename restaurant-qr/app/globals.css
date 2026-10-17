@@ -595,6 +595,22 @@ a:focus-visible {
   overflow-wrap: anywhere;
   font-size: 11px;
 }
+
+.order-status-refresh {
+  margin-top: 0.35rem;
+  padding: 0.35rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--teal, #187f7d);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.order-status-refresh:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
 .order-id {
   font-family: monospace;
 }

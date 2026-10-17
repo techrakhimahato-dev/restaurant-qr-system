@@ -54,6 +54,7 @@ test("POST /api/orders returns an order ID for a valid order", async () => {
   };
   const tableObjectId = new mongoose.Types.ObjectId();
   const menuObjectId = new mongoose.Types.ObjectId(firstId);
+  let savedOrderData: Record<string, unknown> | undefined;
   try {
     RestaurantTable.findOne = (() => ({
       select: async () => ({ _id: tableObjectId, tableId: "1" }),
@@ -65,13 +66,16 @@ test("POST /api/orders returns an order ID for a valid order", async () => {
       ],
     })) as never;
 
-    Order.create = (async (order: Record<string, unknown>) => ({
-      ...order,
-      _id: expectedOrderId,
-      status: "pending",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })) as never;
+    Order.create = (async (order: Record<string, unknown>) => {
+      savedOrderData = order;
+      return {
+        ...order,
+        _id: expectedOrderId,
+        status: "pending",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    }) as never;
     const address = server.address();
     if (!address || typeof address === "string") {
       throw new Error("Could not get the test server address");
@@ -92,6 +96,10 @@ test("POST /api/orders returns an order ID for a valid order", async () => {
     assert.equal(response.status, 201);
     const payload = await response.json();
     assert.equal(payload.order.id, expectedOrderId.toString());
+    assert.equal(typeof payload.receiptToken, "string");
+    assert.equal(payload.receiptToken.length, 64);
+    assert.equal(typeof savedOrderData?.receiptTokenHash, "string");
+    assert.equal((savedOrderData?.receiptTokenHash as string).length, 64);
   } finally {
     RestaurantTable.findOne = savedMethods.findOne;
     MenuItem.find = savedMethods.find;
@@ -101,7 +109,7 @@ test("POST /api/orders returns an order ID for a valid order", async () => {
 });
 
 test("GET /api/orders/:orderId returns an order", async () => {
-  const savedFindById = Order.findById;
+  const savedFindOne = Order.findOne;
   const server = app.listen(0);
   try {
     const fakeOrder = {
@@ -122,16 +130,27 @@ test("GET /api/orders/:orderId returns an order", async () => {
       updatedAt: new Date(),
     };
 
-    Order.findById = (() => ({
+    Order.findOne = (() => ({
       select: async () => fakeOrder,
     })) as never;
+
     const address = server.address();
     if (!address || typeof address === "string") {
       throw new Error("Could not get the test server address");
     }
 
+    const orderUrl =
+      `http://127.0.0.1:${address.port}/api/orders/${expectedOrderId.toString()}`;
+    const noTokenResponse = await fetch(orderUrl);
+    assert.equal(noTokenResponse.status, 401);
+
     const response = await fetch(
-      `http://127.0.0.1:${address.port}/api/orders/${expectedOrderId.toString()}`,
+      orderUrl,
+      {
+        headers: {
+          Authorization: `Bearer ${"a".repeat(64)}`,
+        },
+      },
     );
 
     assert.equal(response.status, 200);
@@ -139,7 +158,7 @@ test("GET /api/orders/:orderId returns an order", async () => {
     assert.equal(payload.order.id, expectedOrderId.toString());
     assert.equal(payload.order.total, 360);
   } finally {
-    Order.findById = savedFindById;
+    Order.findOne = savedFindOne;
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
@@ -149,16 +168,22 @@ test("GET /api/menu returns available menu items", async () => {
   const categoryId = new mongoose.Types.ObjectId();
   MenuItem.find = (() => {
     const query = {
-      sort() { return this; },
-      populate() { return this; },
-      lean: async () => [{
-        _id: new mongoose.Types.ObjectId(firstId),
-        name: "Chicken Momo",
-        description: "Steamed dumplings",
-        price: 180,
-        category: { _id: categoryId, name: "Momo", slug: "momo" },
-        isAvailable: true,
-      }],
+      sort() {
+        return this;
+      },
+      populate() {
+        return this;
+      },
+      lean: async () => [
+        {
+          _id: new mongoose.Types.ObjectId(firstId),
+          name: "Chicken Momo",
+          description: "Steamed dumplings",
+          price: 180,
+          category: { _id: categoryId, name: "Momo", slug: "momo" },
+          isAvailable: true,
+        },
+      ],
     };
     return query;
   }) as never;
@@ -181,14 +206,20 @@ test("GET /api/categories returns active categories", async () => {
   const savedFind = Category.find;
   const categoryId = new mongoose.Types.ObjectId();
   Category.find = (() => ({
-    sort() { return this; },
-    select() { return this; },
-    lean: async () => [{
-      _id: categoryId,
-      name: "Momo",
-      slug: "momo",
-      description: "Dumplings",
-    }],
+    sort() {
+      return this;
+    },
+    select() {
+      return this;
+    },
+    lean: async () => [
+      {
+        _id: categoryId,
+        name: "Momo",
+        slug: "momo",
+        description: "Dumplings",
+      },
+    ],
   })) as never;
 
   try {
@@ -207,7 +238,9 @@ test("GET /api/categories returns active categories", async () => {
 test("GET /api/tables/:tableId returns an active table", async () => {
   const savedFindOne = RestaurantTable.findOne;
   RestaurantTable.findOne = (() => ({
-    select() { return this; },
+    select() {
+      return this;
+    },
     lean: async () => ({ tableId: "1", name: "Table 1" }),
   })) as never;
 
@@ -230,13 +263,15 @@ test("GET /api/orders returns recent orders with a valid staff token", async () 
   const fakeOrder = {
     _id: expectedOrderId,
     tableId: "1",
-    items: [{
-      menuItem: new mongoose.Types.ObjectId(firstId),
-      name: "Chicken Momo",
-      unitPrice: 180,
-      quantity: 2,
-      lineTotal: 360,
-    }],
+    items: [
+      {
+        menuItem: new mongoose.Types.ObjectId(firstId),
+        name: "Chicken Momo",
+        unitPrice: 180,
+        quantity: 2,
+        lineTotal: 360,
+      },
+    ],
     total: 360,
     status: "pending",
     createdAt: new Date(),
@@ -244,16 +279,23 @@ test("GET /api/orders returns recent orders with a valid staff token", async () 
   };
   process.env.STAFF_API_KEY = staffKey;
   Order.find = (() => ({
-    sort() { return this; },
-    limit() { return this; },
+    sort() {
+      return this;
+    },
+    limit() {
+      return this;
+    },
     select: async () => [fakeOrder],
   })) as never;
 
   try {
     const payload = await withAppServer(async (baseUrl) => {
-      const response = await fetch(`${baseUrl}/api/orders?status=pending&tableId=1&limit=10`, {
-        headers: { Authorization: `Bearer ${staffKey}` },
-      });
+      const response = await fetch(
+        `${baseUrl}/api/orders?status=pending&tableId=1&limit=10`,
+        {
+          headers: { Authorization: `Bearer ${staffKey}` },
+        },
+      );
       assert.equal(response.status, 200);
       return response.json();
     });
@@ -273,13 +315,15 @@ test("PATCH /api/orders/:orderId/status updates status for staff", async () => {
   const updatedOrder = {
     _id: expectedOrderId,
     tableId: "1",
-    items: [{
-      menuItem: new mongoose.Types.ObjectId(firstId),
-      name: "Chicken Momo",
-      unitPrice: 180,
-      quantity: 2,
-      lineTotal: 360,
-    }],
+    items: [
+      {
+        menuItem: new mongoose.Types.ObjectId(firstId),
+        name: "Chicken Momo",
+        unitPrice: 180,
+        quantity: 2,
+        lineTotal: 360,
+      },
+    ],
     total: 360,
     status: "preparing",
     createdAt: new Date(),
@@ -292,14 +336,17 @@ test("PATCH /api/orders/:orderId/status updates status for staff", async () => {
 
   try {
     const payload = await withAppServer(async (baseUrl) => {
-      const response = await fetch(`${baseUrl}/api/orders/${expectedOrderId}/status`, {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${staffKey}`,
-          "Content-Type": "application/json",
+      const response = await fetch(
+        `${baseUrl}/api/orders/${expectedOrderId}/status`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${staffKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ status: "preparing" }),
         },
-        body: JSON.stringify({ status: "preparing" }),
-      });
+      );
       assert.equal(response.status, 200);
       return response.json();
     });
@@ -355,11 +402,16 @@ test("calculates the order total from database menu prices", async () => {
   }) as never;
 
   try {
-    const order = await createOrder({
+    const result = await createOrder({
       tableId: "1",
       items: [{ menuItemId: firstId, quantity: 2 }],
     });
-    assert.equal((order as { total: number }).total, 360);
+    assert.equal((result.order as { total: number }).total, 360);
+    assert.equal(result.receiptToken.length, 64);
+    assert.equal(
+      (savedOrder as { receiptTokenHash: string }).receiptTokenHash.length,
+      64,
+    );
     assert.equal(
       (savedOrder as { items: Array<{ unitPrice: number; lineTotal: number }> })
         .items[0].unitPrice,
@@ -552,7 +604,9 @@ function mockResponse() {
   };
 }
 
-async function withAppServer<T>(action: (baseUrl: string) => Promise<T>): Promise<T> {
+async function withAppServer<T>(
+  action: (baseUrl: string) => Promise<T>,
+): Promise<T> {
   const server = app.listen(0);
   try {
     const address = server.address();

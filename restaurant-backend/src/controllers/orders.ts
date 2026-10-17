@@ -43,14 +43,20 @@ function serializeOrder(order: OrderRecord) {
 
 export const postOrder: RequestHandler = async (request, response) => {
   const input = validateCreateOrder(request.body);
-  const order = await createOrder(input);
-  response.status(201).json({ order: serializeOrder(order) });
+  const { order, receiptToken } = await createOrder(input);
+  response.status(201).json({ order: serializeOrder(order), receiptToken });
 };
 
 export const getOrder: RequestHandler = async (request, response) => {
   const orderId = request.params.orderId;
   if (!objectIdPattern.test(orderId)) throw new HttpError(400, "orderId must be a valid MongoDB ObjectId");
-  const order = await getOrderById(orderId);
+  const tokenMatch = /^Bearer ([a-f0-9]{64})$/i.exec(
+    request.get("authorization") ?? "",
+  );
+  if (!tokenMatch) {
+    throw new HttpError(401, "A valid receipt token is required");
+  }
+  const order = await getOrderById(orderId, tokenMatch[1]);
   if (!order) throw new HttpError(404, "Order was not found");
   response.json({ order: serializeOrder(order) });
 };

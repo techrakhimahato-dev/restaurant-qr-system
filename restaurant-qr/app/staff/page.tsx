@@ -11,7 +11,7 @@ export default async function Page() {
 
   return (
     <main className="staff-page">
-      <h1>Restaurant Orders</h1>
+      <h1>Admin Dashboard</h1>
       <form action="/api/logout" method="POST">
         <button type="submit">Log out</button>
       </form>
