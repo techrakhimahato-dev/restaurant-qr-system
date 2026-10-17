@@ -11,6 +11,7 @@
     "dev": "node --watch --experimental-strip-types src/server.ts",
     "start": "node --experimental-strip-types src/server.ts",
     "test": "node --experimental-strip-types --test tests/backend.test.ts",
+    "test:integration": "node --experimental-strip-types --test tests/integration.test.ts",
     "seed": "node --experimental-strip-types src/scripts/seed.ts"
   },
   "keywords": [],

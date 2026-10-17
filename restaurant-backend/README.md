@@ -21,7 +21,7 @@ npm run dev
 
 The seed script upserts its sample records, so it can be run again safely against a development database. For a production deployment, set a long random `STAFF_API_KEY`; staff routes reject requests when it is absent or shorter than 32 characters. This shared bearer key is a basic gate, not account-based or role-based authentication.
 
-Run validation tests with `npm test`. Run the server in production with `npm start`. Use Node.js 22.6 or newer.
+Run unit and HTTP tests with `npm test`. Run the opt-in MongoDB integration test with `npm run test:integration`; set `MONGODB_TEST_URI` to a separate test database whose name ends in `_test`, `-test`, or `test`. The integration test creates uniquely named records and removes only the records it created; it never uses `MONGODB_URI` or clears a database. Run the server in production with `npm start`. Use Node.js 22.6 or newer.
 
 ## API
 

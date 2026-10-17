@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "iron-session": "^9.0.1",
     "lucide-react": "^1.24.0",
     "next": "16.2.10",
     "qrcode": "^1.5.4",

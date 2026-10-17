@@ -2,8 +2,8 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Restaurant QR",
-  description: "Restaurant Ordering System",
+  title: "Himalayan Restaurant | Order at your table",
+  description: "Explore the Himalayan Restaurant menu and order fresh dishes directly from your table.",
 };
 
 export default function RootLayout({
@@ -13,9 +13,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

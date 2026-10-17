@@ -63,9 +63,9 @@ restaurant-project/
 - ✅ QR Table Routing
 - ✅ Menu Page
 - ✅ Shopping Cart
-- ✅ Backend Project Initialized
-- ⏳ MongoDB Integration
-- ⏳ REST APIs
+- ✅ Mongoose models and REST API source
+- ✅ Customer menu/table/order API integration
+- ⏳ Verify API against a development MongoDB database
 - ⏳ Kitchen Dashboard
 - ⏳ Admin Panel
 - ⏳ Deployment
